@@ -226,18 +226,16 @@ if (isGetHeader) {
   const account = (picked["new-api-user"] || "").trim();
   const key = headerKeyForHost(host, account);
   const ok = $prefs.setValueForKey(JSON.stringify(picked), key);
-  if (ok) {
-    addHostToList(host); // 保存参数成功后，更新站点列表
-    if (account) {
-      addAccountToHost(host, account); // 保存账户到站点
-    }
-    // 清除失败标记（重新抓包说明已更新 CK）
-    clearAccountFailed(host, account);
-  }
+  
   const title = notifyTitleForHost(host, account);
-  console.log(`[NewAPI] ${title} | 参数保存 | 已保存 ${Object.keys(picked).length} 个字段`);
-
-  $notify(ok ? `${title} 参数获取成功` : `${title} 参数保存失败`, "", ok ? "后续将用于自动签到。" : "写入本地存储失败，请检查 Quantumult X 配置。");
+  if (ok) {
+    addHostToList(host);
+    if (account) addAccountToHost(host, account);
+    clearAccountFailed(host, account);
+    $notify(`${title} 参数获取成功`, "失败标记已清除", "");
+  } else {
+    $notify(`${title} 参数保存失败`, "", "");
+  }
   $done({});
 } else {
   const args = parseArgs(typeof $argument !== "undefined" ? $argument : "");
