@@ -40,11 +40,21 @@ function getStoredCookie() {
   }
 }
 
+function extractSessionToken(cookie) {
+  const match = cookie.match(/QWHD_SESSION_TOKEN=([^;]+)/);
+  return match ? match[1] : "";
+}
+
 function saveCookie(cookie) {
   try {
     if (typeof $prefs === "undefined" || !cookie) return false;
+    if (!cookie.includes("QWHD_SESSION_TOKEN")) return false;
+
     const oldCookie = getStoredCookie();
-    if (oldCookie !== cookie && cookie.includes("QWHD_SESSION_TOKEN")) {
+    const oldToken = extractSessionToken(oldCookie);
+    const newToken = extractSessionToken(cookie);
+
+    if (newToken && oldToken !== newToken) {
       $prefs.setValueForKey(cookie, COOKIE_KEY);
       console.log("[CMCC] Cookie saved successfully");
       return true;
