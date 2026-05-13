@@ -14,10 +14,12 @@ hostname = %APPEND% wx.10086.cn
 *******************************/
 
 const COOKIE_KEY = "CMCC_Cookie";
+const COOKIE_TIME_KEY = "CMCC_Cookie_Time";
 const HOST = "wx.10086.cn";
 const BASE_URL = "https://wx.10086.cn/qwhdhub/api/mark/mark31";
 const REFERER = "https://wx.10086.cn/qwhdhub/qwhdmark/1021122301?channelId=P00000109876";
 const USER_AGENT = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148/wkwebview leadeon/12.0.6/CMCCIT";
+const NOTIFY_INTERVAL = 3600000; // 1小时内不重复通知
 
 const isGetHeader = typeof $request !== "undefined";
 
@@ -54,10 +56,22 @@ function saveCookie(cookie) {
     const oldToken = extractSessionToken(oldCookie);
     const newToken = extractSessionToken(cookie);
 
-    if (newToken && oldToken !== newToken) {
+    if (!newToken) return false;
+
+    // 检查是否在通知间隔内
+    const lastNotifyTime = parseInt($prefs.valueForKey(COOKIE_TIME_KEY) || "0");
+    const now = Date.now();
+    
+    if (oldToken !== newToken) {
       $prefs.setValueForKey(cookie, COOKIE_KEY);
-      console.log("[CMCC] Cookie saved successfully");
-      return true;
+      
+      // 检查是否需要通知
+      if (now - lastNotifyTime > NOTIFY_INTERVAL) {
+        $prefs.setValueForKey(String(now), COOKIE_TIME_KEY);
+        console.log("[CMCC] Cookie saved successfully");
+        return true;
+      }
+      return false;
     }
     return false;
   } catch (e) {
