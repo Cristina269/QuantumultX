@@ -1,8 +1,9 @@
 /****************************** 
-脚本功能：GLaDOS / Railgun 自动签到
+脚本功能：GLaDOS / Railgun 自动签到 + 积分兑换
 更新时间：2026-05-27
-说明：访问 /console/account 抓包保存 Cookie，定时自动签到。
-         各域名独立 Cookie，支持多域名。
+使用说明：先访问 GLaDOS 网站抓包保存 Cookie，再由定时任务自动签到。
+         支持 glados.network、railgun.info、glados.vip 三域名签到。
+         多账号用 & 分隔。
 
 [rewrite_local]
 ^https:\/\/glados\.network\/console\/account$ url script-request-header https://raw.githubusercontent.com/curtinp118/QuantumultX/refs/heads/main/scripts/glados.js
@@ -81,7 +82,6 @@ function fetchApi(url, method, cookie, domain, body) {
   if (body !== undefined) {
     opts.body = typeof body === "string" ? body : JSON.stringify(body);
   }
-
   return $task.fetch(opts).then(
     (resp) => ({
       ok: resp.statusCode >= 200 && resp.statusCode < 300,
@@ -101,14 +101,11 @@ async function doCheckin(cookie, domain) {
   const { data, raw, error } = await fetchApi(
     `https://${domain}/api/user/checkin`, "POST", cookie, domain, { token: domain }
   );
-
   if (error) return { code: -2, status: "失败", msg: error, earned: "0" };
   if (!data) return { code: -2, status: "失败", msg: raw, earned: "0" };
-
   const code = data.code ?? -2;
   const msg = data.message || "";
   const earned = String(data.points ?? 0);
-
   if (code === 0) return { code, status: "成功", msg, earned };
   if (code === 1) return { code, status: "已签", msg, earned: "0" };
   return { code, status: "失败", msg, earned: "0" };
@@ -142,10 +139,8 @@ async function doExchange(cookie, domain) {
 
 async function runDomain(cookie, domain) {
   console.log(`[GLaDOS] ── ${domain} ──`);
-
   const daysBefore = await getStatus(cookie, domain);
   console.log(`[GLaDOS] 剩余 ${daysBefore ?? "N/A"} 天`);
-
   const result = await doCheckin(cookie, domain);
   if (result.code === 0) {
     console.log(`[GLaDOS] ✅ 签到成功 +${result.earned} 积分`);
@@ -154,32 +149,21 @@ async function runDomain(cookie, domain) {
   } else {
     console.log(`[GLaDOS] ❌ 签到失败: ${result.msg}`);
   }
-
   const totalPoints = await getPoints(cookie, domain);
   console.log(`[GLaDOS] 总积分 ${totalPoints ?? "N/A"}`);
-
   const exResult = await doExchange(cookie, domain);
   console.log(`[GLaDOS] 兑换 ${exResult}`);
-
   const daysAfter = await getStatus(cookie, domain);
   console.log(`[GLaDOS] 剩余 ${daysAfter ?? "N/A"} 天`);
-
   return {
-    domain,
-    code: result.code,
-    status: result.status,
-    earned: result.earned,
-    totalPoints,
-    daysBefore,
-    daysAfter,
-    exchange: exResult,
+    domain, code: result.code, status: result.status,
+    earned: result.earned, totalPoints, daysBefore, daysAfter, exchange: exResult,
   };
 }
 
 if (isGetHeader) {
   const cookie = ($request.headers || {}).Cookie || ($request.headers || {}).cookie || "";
   const host = getHost();
-
   if (cookie && host) {
     const saved = saveCookie(host, cookie);
     if (saved) {
@@ -190,21 +174,17 @@ if (isGetHeader) {
   }
   $done({});
 } else {
-  
   const delay = Math.floor(Math.random() * 11);
   console.log(`[GLaDOS] 随机延迟 ${delay}s`);
   setTimeout(async () => {
     const domains = getSavedDomains();
-
     if (domains.length === 0) {
       console.log("[GLaDOS] 未找到已保存的 Cookie");
       $notify("GLaDOS 签到", "无 Cookie", "请先访问 /console/account 抓包");
       return $done();
     }
-
     console.log(`[GLaDOS] 🚀 开始签到 ${domains.join(", ")}`);
     const results = [];
-
     for (const domain of domains) {
       const cookie = getCookie(domain);
       if (!cookie) {
@@ -213,23 +193,16 @@ if (isGetHeader) {
       }
       results.push(await runDomain(cookie, domain));
     }
-
     const ok = results.filter((r) => r.code === 0).length;
     const dup = results.filter((r) => r.code === 1).length;
     const fail = results.filter((r) => r.code !== 0 && r.code !== 1).length;
-
-    const summary = results
-      .map((r) => {
-        const icon = r.code === 0 ? "✅" : r.code === 1 ? "🔄" : "❌";
-        const pts = r.earned !== "0" ? ` +${r.earned}` : "";
-        const days =
-          r.daysBefore != null && r.daysAfter != null
-            ? `${r.daysBefore}→${r.daysAfter}天`
-            : "N/A";
-        return `${icon} ${r.domain} | ${r.status}${pts} | ${days} | ${r.totalPoints ?? 0}积分`;
-      })
-      .join("\n");
-
+    const summary = results.map((r) => {
+      const icon = r.code === 0 ? "✅" : r.code === 1 ? "🔄" : "❌";
+      const pts = r.earned !== "0" ? ` +${r.earned}` : "";
+      const days = r.daysBefore != null && r.daysAfter != null
+        ? `${r.daysBefore}→${r.daysAfter}天` : "N/A";
+      return `${icon} ${r.domain} | ${r.status}${pts} | ${days} | ${r.totalPoints ?? 0}积分`;
+    }).join("\n");
     const title = `GLaDOS | 成${ok} 重${dup} 败${fail}`;
     console.log(`\n[GLaDOS] ═══ 签到结果 ═══\n${summary}\n`);
     $notify(title, "", summary);
