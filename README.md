@@ -2,6 +2,12 @@
 
 一个精心维护的 Quantumult X 配置文件和自动化脚本集合。
 
+## 📱 配置预览
+
+| 首页预览 | 策略列表 | 重写规则 |
+| :---: | :---: | :---: |
+| <img src="./icons/home1.jpeg" width="280" /> | <img src="./icons/home2.jpeg" width="280" /> | <img src="./icons/rewrite.jpeg" width="280" /> |
+
 ## 📁 仓库结构
 
 ```
@@ -58,16 +64,6 @@ QuantumultX/
 - 闲鱼、小红书、高德地图去广告
 - Reddit 功能增强
 - Spotify 增强
-
-## 📱 配置预览
-
-| 首页预览 | 策略列表 |
-| :---: | :---: |
-| <img src="./icons/home1.jpeg" width="300" /> | <img src="./icons/home2.jpeg" width="300" /> |
-
-| 重写规则 |
-| :---: |
-| <img src="./icons/rewrite.jpeg" width="300" /> |
 
 ## 🚀 快速开始
 
