@@ -11,7 +11,7 @@
 ^https:\/\/glados\.vip\/console\/account$ url script-request-header https://raw.githubusercontent.com/curtinp118/QuantumultX/refs/heads/main/scripts/glados.js
 
 [task_local]
-30 9 * * * https://raw.githubusercontent.com/curtinp118/QuantumultX/refs/heads/main/scripts/glados.js, tag=GLaDOS 签到, enabled=true
+10 7 * * * https://raw.githubusercontent.com/curtinp118/QuantumultX/refs/heads/main/scripts/glados.js, tag=GLaDOS 签到, enabled=true
 
 [MITM]
 hostname = %APPEND% glados.network, railgun.info, glados.vip
@@ -24,8 +24,6 @@ const EXCHANGE_PLAN = "plan500";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 const isGetHeader = typeof $request !== "undefined";
-
-// ────────────────── helpers ──────────────────
 
 function safeJsonParse(str) {
   try {
@@ -103,8 +101,6 @@ function getHostFromRequest() {
   return h.Host || h.host || "";
 }
 
-// ────────────────── HTTP ──────────────────
-
 function request(url, method, cookie, domain, body) {
   const headers = {
     "Content-Type": "application/json;charset=UTF-8",
@@ -133,8 +129,6 @@ function request(url, method, cookie, domain, body) {
     }
   );
 }
-
-// ────────────────── API 调用 ──────────────────
 
 async function checkin(cookie, domain) {
   const url = `https://${domain}/api/user/checkin`;
@@ -232,20 +226,13 @@ async function exchange(cookie, domain, plan) {
   }
 }
 
-// ────────────────── 单域名签到流程 ──────────────────
-
 async function checkinForDomain(cookie, domain) {
   console.log(`[GLaDOS] ── Domain: ${domain} ──`);
 
-  // 1. 查询签到前剩余天数
   const statusBefore = await getStatus(cookie, domain);
-  // 2. 执行签到
   const checkinResult = await checkin(cookie, domain);
-  // 3. 查询积分
   const pointsResult = await getPoints(cookie, domain);
-  // 4. 兑换
   const exchangeResult = await exchange(cookie, domain, EXCHANGE_PLAN);
-  // 5. 查询签到后剩余天数
   const statusAfter = await getStatus(cookie, domain);
 
   return {
@@ -261,10 +248,7 @@ async function checkinForDomain(cookie, domain) {
   };
 }
 
-// ────────────────── 主流程 ──────────────────
-
 if (isGetHeader) {
-  // 抓包模式：从请求头提取 Cookie，按域名分别保存
   const allHeaders = $request.headers || {};
   const cookie = allHeaders.Cookie || allHeaders.cookie || "";
   const host = getHostFromRequest();
@@ -281,63 +265,44 @@ if (isGetHeader) {
     $done({});
   }
 } else {
-  // 签到模式：只对已保存 Cookie 的域名执行签到
-  (async () => {
+  const delay = Math.floor(Math.random() * 11);
+  console.log(`[GLaDOS] 随机延迟 ${delay}s`);
+  setTimeout(async () => {
     const savedDomains = getSavedDomains();
 
     if (savedDomains.length === 0) {
-      console.log("[GLaDOS] No saved cookies found");
-      notify(
-        "GLaDOS 签到", "未获取到 Cookie",
-        "请先访问 GLaDOS 网站 /console/account 抓包保存 Cookie"
-      );
+      console.log("[GLaDOS] 未找到已保存的 Cookie");
+      $notify("GLaDOS 签到", "无 Cookie", "请先访问 /console/account 抓包");
       return $done();
     }
 
-    console.log(
-      `[GLaDOS] 🚀 开始签到，共 ${savedDomains.length} 个域名: ${savedDomains.join(", ")}`
-    );
-
+    console.log(`[GLaDOS] 🚀 开始签到 ${savedDomains.join(", ")}`);
     const allResults = [];
 
     for (const domain of savedDomains) {
       const cookie = getStoredCookie(domain);
       if (!cookie) {
-        console.log(`[GLaDOS] ⚠️ ${domain} 的 Cookie 已丢失，跳过`);
+        console.log(`[GLaDOS] ⚠️ ${domain} Cookie 丢失，跳过`);
         continue;
       }
-      const result = await checkinForDomain(cookie, domain);
-      allResults.push(result);
+      allResults.push(await checkinForDomain(cookie, domain));
     }
 
-    // ── 汇总通知 ──
-    const successCount = allResults.filter((r) => r.code === 0).length;
-    const repeatCount = allResults.filter((r) => r.code === 1).length;
-    const failCount = allResults.filter(
-      (r) => r.code !== 0 && r.code !== 1
-    ).length;
+    const ok = allResults.filter((r) => r.code === 0).length;
+    const dup = allResults.filter((r) => r.code === 1).length;
+    const fail = allResults.filter((r) => r.code !== 0 && r.code !== 1).length;
 
-    const title =
-      `GLaDOS 签到 | 成功${successCount} 失败${failCount} 重复${repeatCount}`;
-
-    const lines = allResults.map((r, i) => {
+    const lines = allResults.map((r) => {
       const icon = r.code === 0 ? "✅" : r.code === 1 ? "🔄" : "❌";
-      return [
-        `${icon} ${r.domain}`,
-        `   签到: ${r.status}${r.earnedPoints !== "0" ? ` (+${r.earnedPoints})` : ""}`,
-        `   天数: ${r.daysBefore} → ${r.daysAfter}`,
-        `   积分: ${r.totalPoints}`,
-        `   兑换: ${r.exchange}`,
-      ].join("\n");
+      const pts = r.earnedPoints !== "0" ? ` +${r.earnedPoints}` : "";
+      return `${icon} ${r.domain} | ${r.status}${pts} | ${r.daysBefore}→${r.daysAfter} | ${r.totalPoints}积分`;
     });
 
-    const content = lines.join("\n\n");
+    const title = `GLaDOS | 成${ok} 重${dup} 败${fail}`;
+    const content = lines.join("\n");
 
-    console.log(
-      `\n[GLaDOS] 🏁 ========== 签到总结 ==========\n${title}\n${content}\n`
-    );
-
-    notify(title, "", content);
+    console.log(`\n[GLaDOS] ═══ 签到结果 ═══\n${content}\n`);
+    $notify(title, "", content);
     $done();
-  })();
+  }, delay * 1000);
 }
