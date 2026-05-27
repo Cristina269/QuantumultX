@@ -1,4 +1,4 @@
-/****************************** 
+/******************************
 脚本功能：GLaDOS / Railgun 自动签到 + 积分兑换
 更新时间：2026-05-27
 使用说明：访问 /console/account 抓包保存 Cookie，定时任务自动签到。
@@ -73,7 +73,7 @@ function getHost() {
 
 // ──── network ────
 
-function fetch(url, method, cookie, domain, body) {
+function fetchApi(url, method, cookie, domain, body) {
   const headers = {
     "Content-Type": "application/json;charset=UTF-8",
     Origin: `https://${domain}`,
@@ -104,7 +104,7 @@ function fetch(url, method, cookie, domain, body) {
 // ──── API ────
 
 async function doCheckin(cookie, domain) {
-  const { ok, data, raw, error } = await fetch(
+  const { data, raw, error } = await fetchApi(
     `https://${domain}/api/user/checkin`, "POST", cookie, domain, { token: domain }
   );
 
@@ -120,34 +120,33 @@ async function doCheckin(cookie, domain) {
   return { code, status: "失败", msg, earned: "0" };
 }
 
-async function doGet(url, cookie, domain) {
-  const { ok, data, raw, error } = await fetch(url, "GET", cookie, domain);
-  if (error || !data) return null;
-  return data;
-}
-
 async function getStatus(cookie, domain) {
-  const data = await doGet(`https://${domain}/api/user/status`, cookie, domain);
+  const { data } = await fetchApi(
+    `https://${domain}/api/user/status`, "GET", cookie, domain
+  );
   const days = data?.data?.leftDays;
   return days != null ? parseInt(parseFloat(days), 10) : null;
 }
 
 async function getPoints(cookie, domain) {
-  const data = await doGet(`https://${domain}/api/user/points`, cookie, domain);
+  const { data } = await fetchApi(
+    `https://${domain}/api/user/points`, "GET", cookie, domain
+  );
   const p = data?.points;
   return p != null ? parseInt(parseFloat(p), 10) : null;
 }
 
 async function doExchange(cookie, domain) {
-  const { ok, data, raw, error } = await fetch(
-    `https://${domain}/api/user/exchange`, "POST", cookie, domain, { planType: EXCHANGE_PLAN }
+  const { data, raw, error } = await fetchApi(
+    `https://${domain}/api/user/exchange`, "POST", cookie, domain,
+    { planType: EXCHANGE_PLAN }
   );
   if (error) return `失败: ${error}`;
   if (!data) return `失败: ${raw}`;
   return data.code === 0 ? `成功(${EXCHANGE_PLAN})` : `失败: ${data.message || ""}`;
 }
 
-// ──── single domain flow ────
+// ──── 单域名签到 ────
 
 async function runDomain(cookie, domain) {
   console.log(`[GLaDOS] ── ${domain} ──`);
@@ -167,8 +166,8 @@ async function runDomain(cookie, domain) {
   const totalPoints = await getPoints(cookie, domain);
   console.log(`[GLaDOS] 总积分 ${totalPoints ?? "N/A"}`);
 
-  const exchangeResult = await doExchange(cookie, domain);
-  console.log(`[GLaDOS] 兑换 ${exchangeResult}`);
+  const exResult = await doExchange(cookie, domain);
+  console.log(`[GLaDOS] 兑换 ${exResult}`);
 
   const daysAfter = await getStatus(cookie, domain);
   console.log(`[GLaDOS] 剩余 ${daysAfter ?? "N/A"} 天`);
@@ -178,11 +177,10 @@ async function runDomain(cookie, domain) {
     code: result.code,
     status: result.status,
     earned: result.earned,
-    msg: result.msg,
     totalPoints,
     daysBefore,
     daysAfter,
-    exchange: exchangeResult,
+    exchange: exResult,
   };
 }
 
