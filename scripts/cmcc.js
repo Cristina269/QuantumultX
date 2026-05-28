@@ -1,6 +1,7 @@
 /******************************
 脚本功能：中国移动 自动签到领奖
 更新时间：2026-05-13
+作者：Curtinp118
 使用说明：先访问中国移动签到页面保存 Cookie，再由定时任务自动签到领奖。
 
 [rewrite_local]
@@ -46,13 +47,11 @@ function saveCookie(cookie) {
     if (!cookie.includes("QWHD_SESSION_TOKEN")) return false;
 
     const oldCookie = getStoredCookie();
-
     if (oldCookie !== cookie) {
       $prefs.setValueForKey(cookie, COOKIE_KEY);
       console.log("[CMCC] Cookie saved successfully");
       return true;
     }
-
     return false;
   } catch (e) {
     console.log("[CMCC] Error saving cookie:", e);
@@ -93,12 +92,8 @@ function fetchUrl(url, options = {}) {
       defaultOptions.body = options.body;
     }
     $task.fetch(defaultOptions).then(
-      (resp) => {
-        resolve(resp.body || "");
-      },
-      (reason) => {
-        reject(reason);
-      }
+      (resp) => resolve(resp.body || ""),
+      (reason) => reject(reason)
     );
   });
 }
