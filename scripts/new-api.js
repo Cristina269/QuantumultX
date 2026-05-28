@@ -1,36 +1,41 @@
+
 /******************************
-脚本功能：通用签到（适配所有NewAPI源码搭建的中转站）
-更新时间：2026-04-20
-使用说明：先抓包一次保存 Cookie，再由定时任务自动签到（按域名分别保存，多站点可共用同一脚本）。
+脚本功能：通用签到脚本（多站点 + 多账号版）
+更新时间：2026-05-28
+作者：Curtinp118
+使用说明：访问 new-api 类站点的 /api/user/self 页面抓包保存请求头，定时任务自动签到。
+         支持任意 new-api 站点，同一站点支持多账号。失败的账号会自动跳过，需重新抓包激活。
 
 [rewrite_local]
-^https:\/\/.*\/api\/user\/self$ url script-request-header https://raw.githubusercontent.com/curtinp118/QuantumultX/refs/heads/main/scripts/new-api.js
+^https:\/\/[^/]+\/api\/user\/self$ url script-request-header https://raw.githubusercontent.com/curtinp118/QuantumultX/refs/heads/main/scripts/new-api.js
 
 [task_local]
-10 9 * * * https://raw.githubusercontent.com/curtinp118/QuantumultX/refs/heads/main/scripts/new-api.js, tag=通用签到(NewAPI), enabled=true
-; 如需只跑单站点（可选），替换 example.com 为实际域名
-; 10 9 * * * https://raw.githubusercontent.com/curtinp118/QuantumultX/refs/heads/main/scripts/new-api.js, tag=单站点签到, enabled=true, argument=host=example.com
+30 7 * * * https://raw.githubusercontent.com/curtinp118/QuantumultX/refs/heads/main/scripts/new-api.js, tag=通用签到, enabled=true
 
 [MITM]
 hostname = %APPEND% *
 *******************************/
 
-const HEADER_KEY_PREFIX = "UniversalCheckin_Headers";
-const HOSTS_LIST_KEY = "UniversalCheckin_HostsList";
-const FAILED_KEY_PREFIX = "UniversalCheckin_Failed";
+const HEADER_KEY_PREFIX = "NewAPI_Headers";
+const HOSTS_LIST_KEY = "NewAPI_Hosts";
+const ACCOUNTS_KEY_PREFIX = "NewAPI_Accounts";
+const FAILED_KEY_PREFIX = "NewAPI_Failed";
+
 const isGetHeader = typeof $request !== "undefined";
 
 const NEED_KEYS = [
-  "Host",
+  "Cookie",
   "User-Agent",
   "Accept",
   "Accept-Language",
   "Accept-Encoding",
   "Origin",
   "Referer",
-  "Cookie",
   "new-api-user",
+  "Host",
 ];
+
+// ─── Helpers ───
 
 function safeJsonParse(str) {
   try {
@@ -40,15 +45,17 @@ function safeJsonParse(str) {
   }
 }
 
+// ─── Storage: hosts list ───
+
 function getSavedHosts() {
   try {
     if (typeof $prefs === "undefined") return [];
     const raw = $prefs.valueForKey(HOSTS_LIST_KEY);
     if (!raw) return [];
-    const hosts = safeJsonParse(raw) || [];
-    return Array.isArray(hosts) ? hosts.filter(h => h && typeof h === "string") : [];
+    const list = safeJsonParse(raw) || [];
+    return Array.isArray(list) ? list.filter(Boolean) : [];
   } catch (e) {
-    console.log("[NewAPI] Error reading saved hosts:", e);
+    console.log("[NewAPI] Error reading hosts:", e);
     return [];
   }
 }
@@ -56,45 +63,45 @@ function getSavedHosts() {
 function addHostToList(host) {
   try {
     if (typeof $prefs === "undefined") return;
-    const hosts = getSavedHosts();
-    if (!hosts.includes(host)) {
-      hosts.push(host);
-      $prefs.setValueForKey(JSON.stringify(hosts), HOSTS_LIST_KEY);
-      console.log("[NewAPI] Updated hosts list:", hosts.join(", "));
+    const list = getSavedHosts();
+    if (!list.includes(host)) {
+      list.push(host);
+      $prefs.setValueForKey(JSON.stringify(list), HOSTS_LIST_KEY);
     }
   } catch (e) {
-    console.log("[NewAPI] Error adding host to list:", e);
+    console.log("[NewAPI] Error adding host:", e);
   }
 }
 
-function addAccountToHost(host, account) {
-  try {
-    if (typeof $prefs === "undefined" || !account || !account.trim()) return;
-    const accountsKey = `${HEADER_KEY_PREFIX}:Accounts:${host}`;
-    const raw = $prefs.valueForKey(accountsKey);
-    const accounts = safeJsonParse(raw) || [];
-    if (!accounts.includes(account)) {
-      accounts.push(account);
-      $prefs.setValueForKey(JSON.stringify(accounts), accountsKey);
-      console.log(`[NewAPI] Account added to ${host}:`, account);
-    }
-  } catch (e) {
-    console.log("[NewAPI] Error adding account to host:", e);
-  }
-}
+// ─── Storage: accounts per host ───
 
 function getAccountsForHost(host) {
   try {
     if (typeof $prefs === "undefined") return [""];
-    const accountsKey = `${HEADER_KEY_PREFIX}:Accounts:${host}`;
-    const raw = $prefs.valueForKey(accountsKey);
-    const accounts = safeJsonParse(raw) || [];
-    return accounts.length > 0 ? accounts : [""];
+    const raw = $prefs.valueForKey(`${ACCOUNTS_KEY_PREFIX}:${host}`);
+    if (!raw) return [""];
+    const list = safeJsonParse(raw);
+    return Array.isArray(list) && list.length > 0 ? list : [""];
   } catch (e) {
     console.log("[NewAPI] Error reading accounts:", e);
     return [""];
   }
 }
+
+function addAccountToHost(host, account) {
+  try {
+    if (typeof $prefs === "undefined" || !account) return;
+    const list = getAccountsForHost(host).filter(Boolean);
+    if (!list.includes(account)) {
+      list.push(account);
+      $prefs.setValueForKey(JSON.stringify(list), `${ACCOUNTS_KEY_PREFIX}:${host}`);
+    }
+  } catch (e) {
+    console.log("[NewAPI] Error adding account:", e);
+  }
+}
+
+// ─── Storage: failed accounts ───
 
 function isAccountFailed(host, account) {
   try {
@@ -129,7 +136,6 @@ function clearAccountFailed(host, account) {
     console.log("[NewAPI] Error clearing failed status:", e);
   }
 }
-
 
 function pickNeedHeaders(src = {}) {
   const dst = {};
@@ -208,6 +214,8 @@ function notifyTitleForHost(host, account) {
   return account && account.trim() ? `${siteName}(${account})` : siteName;
 }
 
+// ─── Main ───
+
 if (isGetHeader) {
   const allHeaders = $request.headers || {};
   const host = getHostFromRequest();
@@ -226,7 +234,7 @@ if (isGetHeader) {
   const account = (picked["new-api-user"] || "").trim();
   const key = headerKeyForHost(host, account);
   const ok = $prefs.setValueForKey(JSON.stringify(picked), key);
-  
+
   const title = notifyTitleForHost(host, account);
   if (ok) {
     addHostToList(host);
@@ -283,9 +291,7 @@ if (isGetHeader) {
       "new-api-user": savedHeaders["new-api-user"] || "",
     };
 
-    const myRequest = { url, method, headers, body: "" };
-
-    return $task.fetch(myRequest).then(
+    return $task.fetch({ url, method, headers, body: "" }).then(
       (resp) => {
         const status = resp.statusCode;
         const body = resp.body || "";
@@ -298,7 +304,7 @@ if (isGetHeader) {
           obj?.data?.quota_awarded !== undefined ? String(obj.data.quota_awarded) : "";
 
         const title = notifyTitleForHost(host, account);
-        
+
         if (status === 401 || status === 403) {
           // 只有登录失效才标记为失败
           markAccountFailed(host, account);
